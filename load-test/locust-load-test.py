@@ -18,7 +18,7 @@ faker = Faker()
 
 class KinesisBotoClient:
     def __init__(self, region_name, stream_name, batch_size):
-        stream_name = "onebcvis-pt-3-TransactionBlockStream-mm0mARaLbJf9"
+        stream_name = os.getenv("KINESIS_DEFAULT_STREAM_NAME")
         self.kinesis_client = boto3.client('kinesis', region_name=region_name)
         self.stream_name = stream_name
         self.batch_size = batch_size
