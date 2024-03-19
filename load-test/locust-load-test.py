@@ -7,8 +7,10 @@ import uuid
 import logging
 from locust import User, task, constant, events
 from faker import Faker
+import datetime
 
-REGION = os.environ.get("REGION") if os.environ.get("REGION") else "eu-central-1"
+
+REGION = os.environ.get("REGION") if os.environ.get("REGION") else "us-east-1"
 BATCH_SIZE = int(os.environ.get("LOCUST_BATCH_SIZE")) if os.environ.get("LOCUST_BATCH_SIZE") else 1
 
 faker = Faker()
@@ -16,6 +18,7 @@ faker = Faker()
 
 class KinesisBotoClient:
     def __init__(self, region_name, stream_name, batch_size):
+        stream_name = "onebcvis-pt-3-TransactionBlockStream-mm0mARaLbJf9"
         self.kinesis_client = boto3.client('kinesis', region_name=region_name)
         self.stream_name = stream_name
         self.batch_size = batch_size
@@ -35,8 +38,12 @@ class KinesisBotoClient:
         start_perf_counter = time.perf_counter()
 
         try:
+            cur_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
             self.kinesis_client.put_records(
                 StreamName=self.stream_name, Records=records)
+            with open("kinesis.csv", "a") as f:
+                _hash = records[0]["PartitionKey"]
+                f.write(f"{_hash},{cur_time}\n")
         except Exception as e:
             request_meta['exception'] = e
 
@@ -58,33 +65,71 @@ class KinesisBotoUser(User):
 class SensorAPIUser(KinesisBotoUser):
     wait_time = constant(1)
 
-    def generate_sensor_reading(self, sensor_id, sensor_reading):
-        current_temperature = round(10 + random.random() * 170, 2)
-
-        if current_temperature > 160:
-            status = "ERROR"
-        elif current_temperature > 140 or random.randrange(1, 100) > 80:
-            status = random.choice(["WARNING", "ERROR"])
-        else:
-            status = "OK"
-
-        return {
-            'sensorId': f"{sensor_id}_{sensor_reading}",
-            'temperature': current_temperature,
-            'status': status,
-            'timestamp': round(time.time()*1000)
-        }
-
     def on_start(self):
         self.user_id = str(uuid.uuid4())
         return super().on_start()
+    
+    def generate_random_txn(self):
+        txn = {}
+        txn["Hash"] = "0x" + ''.join(random.choices('0123456789abcdef', k=32))
+        txn["Status"] = 'PENDING'
+        txn["Amount"] = random.randint(1, 99)
+        txn["Type"] = random.choice([1, 2, 3])
+        txn["Nonce"] = random.randint(0, 999999)
+        txn["Fee"] = random.randint(1, 9)
+        txn["Sender"] = [
+            ["0x" + ''.join(random.choices('0123456789abcdef', k=16)), txn["Amount"]]]
+        txn["Receiver"] = [
+            ["0x" + ''.join(random.choices('0123456789abcdef', k=16)), txn["Amount"]]]
+        message = {}
+        message["type"] = "TRANSACTION"
+        message["data"] = txn
+        return message, txn["Hash"]
+
+    def generate_random_block(self):
+        block = {}
+        block["Hash"] = "0x" + ''.join(random.choices('0123456789abcdef', k=32))
+        block["PreviousBlockHash"] = "0x" + ''.join(random.choices('0123456789abcdef', k=32))
+        block["Height"] = random.randint(1, 100)
+        block["Nonce"] = random.randint(0, 999999)
+        block["Difficulty"] = random.randint(1, 100)
+        block["Miner"] = "0x" + ''.join(random.choices('0123456789abcdef', k=32))
+        block["Timestamp"] = random.randint(1000000000, 2000000000)
+        block["Transactions"] = []
+        for _ in range(random.randint(0, 200)):
+            msg, _ = self.generate_random_txn()
+            txn = msg["data"]
+            txn["Status"] = 'APPROVED'
+            block["Transactions"].append(txn)
+        block["Uncles"] = []
+        block["Sidecar"] = []
+        if (len(block["Transactions"]) > 0):
+            for _ in range(random.randint(0, 3)):
+                off_chain_data = {}
+                off_chain_data["ID"] = "0x" + \
+                    ''.join(random.choices('0123456789abcdef', k=32))
+                off_chain_data["Size"] = random.randint(1024, 2048)
+                off_chain_data["TransactionID"] = random.choice(
+                    block["Transactions"])["Hash"]
+                block["Sidecar"].append(off_chain_data)
+        block["OffChainDataSizes"] = [random.randint(1024, 2048) for _ in range(2)]
+        message = {}
+        message["type"] = "BLOCK"
+        message["data"] = block
+        return message, block["Hash"]
 
     @task
     def send_sensor_value(self):
         events = []
         for i in range(BATCH_SIZE):
-            sensor_reading = self.generate_sensor_reading(self.user_id, i)
-            event = {'Data': json.dumps(sensor_reading), 'PartitionKey': str(sensor_reading['sensorId'])}
+            test_event, partition_key = None
+            if random.randint(0, 20) == 0:
+                test_event, partition_key = self.generate_random_block()
+            else:
+                test_event, partition_key = self.generate_random_txn()
+            if test_event == None:
+                continue
+            event = {'Data': json.dumps(test_event), 'PartitionKey': partition_key}
             events.append(event)
 
         logging.debug("Generated events for Kinesis: %s", events)
