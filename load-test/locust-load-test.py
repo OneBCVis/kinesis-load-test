@@ -122,7 +122,7 @@ class SensorAPIUser(KinesisBotoUser):
     def send_sensor_value(self):
         events = []
         for i in range(BATCH_SIZE):
-            test_event, partition_key = None
+            test_event, partition_key = None, None
             if random.randint(0, 20) == 0:
                 test_event, partition_key = self.generate_random_block()
             else:
