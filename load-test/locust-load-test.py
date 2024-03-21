@@ -127,10 +127,10 @@ class SensorAPIUser(KinesisBotoUser):
         BATCH_SIZE = 1
         for i in range(BATCH_SIZE):
             test_event, partition_key = None, None
-            if random.randint(0, 20) == 0:
-                test_event, partition_key = self.generate_random_block()
-            else:
-                test_event, partition_key = self.generate_random_txn()
+            # if random.randint(0, 20) == 0:
+            #     test_event, partition_key = self.generate_random_block()
+            # else:
+            test_event, partition_key = self.generate_random_txn()
             if test_event == None:
                 continue
             event = {'Data': json.dumps(test_event), 'PartitionKey': partition_key}
