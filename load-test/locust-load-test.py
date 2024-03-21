@@ -124,6 +124,7 @@ class SensorAPIUser(KinesisBotoUser):
     @task
     def send_sensor_value(self):
         events = []
+        BATCH_SIZE = 1
         for i in range(BATCH_SIZE):
             test_event, partition_key = None, None
             if random.randint(0, 20) == 0:
