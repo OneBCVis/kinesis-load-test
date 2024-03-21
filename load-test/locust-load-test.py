@@ -8,7 +8,10 @@ import logging
 from locust import User, task, constant, events
 from faker import Faker
 import datetime
+from dotenv import load_dotenv
 
+
+load_dotenv()
 
 REGION = os.environ.get("REGION") if os.environ.get("REGION") else "us-east-1"
 BATCH_SIZE = int(os.environ.get("LOCUST_BATCH_SIZE")) if os.environ.get("LOCUST_BATCH_SIZE") else 1
